@@ -14,25 +14,30 @@
         android:theme="@style/Theme.VoskControl"
         tools:targetApi="31">
 
-        <!--
-          核心：MainActivity是唯一的Activity。
-          它的intent-filter同时包含了：
-          1. action.MAIN: 声明它是应用的主入口。
-          2. category.HOME: 声明它可以作为一个桌面/主屏幕。
-          3. category.DEFAULT: 必须与HOME一起使用，让系统可以找到它。
-          这三者结合，就实现了“开机直接进入此APP”的功能。
-        -->
         <activity
-            android:name=".MainActivity"
+            android:name=".SplashLogoActivity"
             android:exported="true"
-            android:launchMode="singleTask"
-            android:stateNotNeeded="true">
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:hardwareAccelerated="false"> <!-- 添加此行 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".SplashAnimationActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:hardwareAccelerated="false" /> <!-- 添加此行 -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:hardwareAccelerated="false" /> <!-- 添加此行 -->
 
     </application>
 

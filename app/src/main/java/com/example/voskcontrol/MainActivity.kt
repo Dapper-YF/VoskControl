@@ -1,6 +1,7 @@
 package com.example.voskcontrol
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -10,6 +11,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import android.widget.VideoView
+import androidx.annotation.RawRes
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -20,10 +22,13 @@ import org.vosk.Recognizer
 import org.vosk.android.RecognitionListener
 import org.vosk.android.SpeechService
 import org.vosk.android.StorageService
-import java.io.File
-import java.io.FileOutputStream
 import java.io.IOException
-import java.io.InputStream
+
+// 数据类：定义一个动作，包含指令关键词和对应的视频资源ID
+data class Action(val keywords: List<String>, @RawRes val videoResId: Int)
+
+// 数据类：定义一个动物，包含它的名字、默认视频和所有支持的动作列表
+data class Animal(val name: String, val keywords: List<String>, @RawRes val defaultVideoResId: Int, val actions: List<Action>)
 
 class MainActivity : AppCompatActivity(), RecognitionListener {
 
@@ -34,15 +39,12 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
     private var speechService: SpeechService? = null
     private var isListening = false
 
-    // 关键词与视频映射
-    private val commandMap = mapOf(
-        R.raw.v0 to Pair(listOf("翘屁屁笑一个"), listOf("翘屁屁", "笑一个", "俏皮皮", "笑一笑")),
-        R.raw.v1 to Pair(listOf("转个身笑一个"), listOf("转身", "转个身")),
-        R.raw.v2 to Pair(listOf("跳个蒙古舞"), listOf("蒙古舞", "跳个舞")),
-        R.raw.v3 to Pair(listOf("抱一抱"), listOf("抱抱")),
-        R.raw.v4 to Pair(listOf("装可怜"), listOf("可怜")),
-        R.raw.v5 to Pair(listOf("不开心"), listOf("不高兴", "生气"))
-    )
+    private lateinit var animals: List<Animal>
+    private var currentAnimal: Animal? = null
+
+    // 用于持久化存储
+    private val prefsName = "AnimalPrefs"
+    private val lastAnimalKey = "lastAnimalName"
 
     companion object {
         private const val TAG = "VoskControl"
@@ -60,71 +62,216 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
+        window.setBackgroundDrawable(null)
         videoView = binding.videoView
+        videoView.setZOrderOnTop(true)
 
-        // --- 核心修改：为VideoView添加点击事件，作为替换开机动画的隐藏触发器 ---
-        videoView.setOnClickListener {
-            // 使用对话框让用户确认，防止误触
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("开发者选项")
-                .setMessage("您要将系统开机动画替换为产品动画吗？\n(此操作需要Root权限，且仅用于测试设备)")
-                .setPositiveButton("确认替换") { _, _ ->
-                    replaceBootAnimation()
+        initializeAnimals()
+        checkAndRequestPermissions()
+        Log.d(TAG, "MainActivity 已创建")
+    }
+
+    // 在这里集中管理所有的动物和指令
+    private fun initializeAnimals() {
+        val pomeranian = Animal("博美", listOf("博美", "小博美","我每","我没"), R.raw.pomeranian_happy, listOf(
+            Action(listOf("不开心"), R.raw.pomeranian_unhappy),
+            Action(listOf("穿红衣服"), R.raw.pomeranian_wear_red_clothes),
+            Action(listOf("大喘气"), R.raw.pomeranian_pant),
+            Action(listOf("弹吉他"), R.raw.pomeranian_play_guitar),
+            Action(listOf("得瑟", "嘚瑟","特色","的是"), R.raw.pomeranian_cheerful),
+            Action(listOf("喝奶"), R.raw.pomeranian_drink_milk),
+            Action(listOf("开心", "笑一个"), R.raw.pomeranian_happy),
+            Action(listOf("累了"), R.raw.pomeranian_tired),
+            Action(listOf("难过"), R.raw.pomeranian_sad),
+            Action(listOf("抛媚眼","眨眼睛","眨眼"), R.raw.pomeranian_wink),
+            Action(listOf("舔爪子","便爪子","前爪子"), R.raw.pomeranian_lick_paw),
+            Action(listOf("跳高高", "跳高"), R.raw.pomeranian_jump_high),
+            Action(listOf("跳个舞", "跳舞"), R.raw.pomeranian_dance),
+            Action(listOf("我饿了", "饿了"), R.raw.pomeranian_hungry),
+            Action(listOf("转圈圈", "转圈"), R.raw.pomeranian_turn_circle)
+        ))
+
+        val shibaInu = Animal("柴犬", listOf("柴犬", "小柴","采取"), R.raw.shiba_inu_happy, listOf(
+            Action(listOf("不开心"), R.raw.shiba_inu_unhappy),
+            Action(listOf("穿绿衣", "穿衣服","创绿衣","翻窗绿衣"), R.raw.shiba_inu_wear_green_clothes),
+            Action(listOf("打哈欠","法哈欠"), R.raw.shiba_inu_yawn),
+            Action(listOf("弹吉它", "弹吉他"), R.raw.shiba_inu_play_guitar),
+            Action(listOf("东张西望"), R.raw.shiba_inu_look_around),
+            Action(listOf("喝奶","河南"), R.raw.shiba_inu_drink_milk),
+            Action(listOf("开心"), R.raw.shiba_inu_happy),
+            Action(listOf("难过","能够"), R.raw.shiba_inu_sad),
+            Action(listOf("抛媚眼","眨眼睛"), R.raw.shiba_inu_wink),
+            Action(listOf("舔爪子","便爪子","前爪子"), R.raw.shiba_inu_lick_paw),
+            Action(listOf("跳高高", "跳高"), R.raw.shiba_inu_jump_high),
+            Action(listOf("跳舞"), R.raw.shiba_inu_dance),
+            Action(listOf("笑一个", "笑一笑"), R.raw.shiba_inu_smile),
+            Action(listOf("摇尾巴"), R.raw.shiba_inu_wag_tail)
+        ))
+
+        val teddy = Animal("黑泰迪", listOf("泰迪", "黑泰迪"), R.raw.teddy_black_happy, listOf(
+            Action(listOf("不开心"), R.raw.teddy_black_unhappy),
+            Action(listOf("弹吉它", "弹吉他"), R.raw.teddy_black_play_guitar),
+            Action(listOf("得瑟", "嘚瑟","特色","的是"), R.raw.teddy_black_cheerful),
+            Action(listOf("喝奶","河南"), R.raw.teddy_black_drink_milk),
+            Action(listOf("很不开心", "非常不开心","很伤心"), R.raw.teddy_black_very_unhappy),
+            Action(listOf("开心"), R.raw.teddy_black_happy),
+            Action(listOf("可怜巴巴", "装可怜"), R.raw.teddy_black_pitiful),
+            Action(listOf("来个节奏"), R.raw.teddy_black_rhythm),
+            Action(listOf("难过"), R.raw.teddy_black_sad),
+            Action(listOf("受伤了"), R.raw.teddy_black_hurt),
+            Action(listOf("舔爪子","便爪子","前爪子"), R.raw.teddy_black_lick_paw),
+            Action(listOf("委屈"), R.raw.teddy_black_wronged),
+            Action(listOf("我饿了", "饿了"), R.raw.teddy_black_hungry),
+            Action( listOf("笑一个", "笑一笑"), R.raw.teddy_black_smile),
+            Action(listOf("转个圈", "转圈"), R.raw.teddy_black_turn_circle)
+        ))
+
+        val goldenRetriever = Animal("金毛", listOf("金毛", "金毛犬"), R.raw.golden_retriever_happy, listOf(
+            Action(listOf("饿了", "我饿了"), R.raw.golden_retriever_hungry),
+            Action(listOf("好累", "累了"), R.raw.golden_retriever_tired),
+            Action(listOf("喝奶","河南"), R.raw.golden_retriever_drink_milk),
+            Action(listOf("开心", "笑一个"), R.raw.golden_retriever_happy),
+            Action(listOf("看着我"), R.raw.golden_retriever_look_at_me),
+            Action(listOf("难过"), R.raw.golden_retriever_sad),
+            Action(listOf("舔手手", "舔手","田鼠"), R.raw.golden_retriever_lick_hand),
+            Action(listOf("跳高高", "跳高"), R.raw.golden_retriever_jump_high),
+            Action(listOf("捂鼻子","鼻子"), R.raw.golden_retriever_cover_nose),
+            Action(listOf("兴奋"), R.raw.golden_retriever_excited),
+            Action(listOf("转个圈", "转圈"), R.raw.golden_retriever_turn_circle),
+            Action(listOf("走一个", "走两步"), R.raw.golden_retriever_walk)
+        ))
+
+        val nezha = Animal(
+            name = "哪吒",
+            keywords = listOf("哪吒", "小英雄"),
+            defaultVideoResId = R.raw.nezha,
+            actions = listOf()
+        )
+
+        val dinosaur = Animal(
+            name = "恐龙",
+            keywords = listOf("恐龙", "小恐龙"),
+            defaultVideoResId = R.raw.dinosaur_angry, // 默认视频：愤怒
+            actions = listOf(
+                Action(listOf("愤怒", "生气"), R.raw.dinosaur_angry),
+                Action(listOf("拿刀攻击", "拿刀","攻击"), R.raw.dinosaur_attack_with_knife),
+                Action(listOf("中手雷", "手雷"), R.raw.dinosaur_hit_by_grenade),
+                Action(listOf("中枪","中将"), R.raw.dinosaur_shot),
+                Action(listOf("哒哒哒", "大大大", "打打打"), R.raw.dinosaur_rat_a_tat_tat)
+            )
+        )
+
+        val grandpa = Animal(
+            name = "老爷爷",
+            keywords = listOf("老爷爷", "爷爷"),
+            defaultVideoResId = R.raw.oldman,
+            actions = listOf(
+                Action(listOf("慈祥"), R.raw.oldman)
+            )
+        )
+
+        animals = listOf(pomeranian, shibaInu, teddy, goldenRetriever, nezha, dinosaur, grandpa)
+    }
+
+    override fun onPartialResult(hypothesis: String) {
+        if (!isListening) return
+
+        try {
+            val json = JSONObject(hypothesis)
+            val partialText = json.getString("partial").replace(" ", "")
+            if (partialText.isBlank()) return
+
+            Log.d(TAG, "听到: $partialText")
+
+            for (animal in animals) {
+                for (keyword in animal.keywords) {
+                    if (partialText.contains(keyword)) {
+                        Log.i(TAG, "检测到动物切换指令: '${animal.name}'")
+                        switchAnimal(animal)
+                        speechService?.reset()
+                        return
+                    }
                 }
-                .setNegativeButton("取消", null)
-                .show()
+            }
+
+            currentAnimal?.let { animal ->
+                for (action in animal.actions) {
+                    for (keyword in action.keywords) {
+                        if (partialText.contains(keyword)) {
+                            Log.i(TAG, "在'${animal.name}'上下文中检测到动作: '${keyword}'")
+                            playVideo(action.videoResId, isLooping = false)
+                            speechService?.reset()
+                            return
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) { /* 忽略JSON解析错误 */ }
+    }
+
+    private fun switchAnimal(animal: Animal) {
+        if (currentAnimal?.name == animal.name) {
+            Log.d(TAG, "已经是'${animal.name}'，无需切换。")
+            playVideo(animal.defaultVideoResId, isLooping = true)
+            return
         }
 
-        checkAndRequestPermissions()
-        Log.d(TAG, "Activity已创建")
+        Log.d(TAG, "切换到 '${animal.name}'")
+        currentAnimal = animal
+        playVideo(animal.defaultVideoResId, isLooping = true)
+
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        prefs.edit().putString(lastAnimalKey, animal.name).apply()
+        Log.d(TAG, "已将 '${animal.name}' 保存到偏好设置。")
     }
 
-    // --- 新增方法：替换开机动画的核心逻辑 ---
-    private fun replaceBootAnimation() {
-        Toast.makeText(this, "正在执行替换操作...", Toast.LENGTH_SHORT).show()
-        // Root操作是耗时操作，必须在子线程中执行
-        Thread {
-            // 1. 将我们打包在res/raw中的bootanimation.zip复制到应用的内部存储，方便后续操作
-            val internalFile = File(filesDir, "bootanimation.zip")
-            try {
-                val inputStream: InputStream = resources.openRawResource(R.raw.bootanimation)
-                val outputStream = FileOutputStream(internalFile)
-                inputStream.copyTo(outputStream)
-                inputStream.close()
-                outputStream.close()
-                Log.d(TAG, "动画文件已成功复制到: ${internalFile.absolutePath}")
-            } catch (e: IOException) {
-                e.printStackTrace()
-                runOnUiThread { Toast.makeText(this, "错误：无法从res/raw读取动画文件", Toast.LENGTH_LONG).show() }
-                return@Thread
+    private fun playVideo(@RawRes videoResId: Int, isLooping: Boolean) {
+        try {
+            val currentVideoTag = videoView.tag as? Int
+            // 修复：如果正在播放的视频和新请求的视频是同一个，并且它是一个循环视频，则不打断
+            if (videoView.isPlaying && currentVideoTag == videoResId && isLooping) {
+                return
             }
 
-            // 2. 定义需要执行的Root命令
-            val commands = listOf(
-                "mount -o remount,rw /system", // 重新挂载/system分区为可读写
-                "cp ${internalFile.absolutePath} /system/media/bootanimation.zip", // 复制文件
-                "chmod 644 /system/media/bootanimation.zip", // 修正文件权限
-                "mount -o remount,ro /system" // 操作完成后，恢复/system分区为只读，保证安全
-            )
+            Log.d(TAG, "准备播放视频资源ID: $videoResId | 是否循环: $isLooping")
+            videoView.stopPlayback()
+            videoView.tag = videoResId
+            val uri = Uri.parse("android.resource://$packageName/$videoResId")
+            videoView.setVideoURI(uri)
 
-            // 3. 执行命令
-            Log.d(TAG, "准备执行Root命令: $commands")
-            val success = RootCmd.exec(commands)
-            Log.d(TAG, "Root命令执行结果: $success")
+            videoView.setOnPreparedListener { mp ->
+                mp.isLooping = isLooping
+                videoView.start()
+            }
 
-            // 4. 在UI线程上显示结果
-            runOnUiThread {
-                if (success) {
-                    Toast.makeText(this, "开机动画替换成功！请重启设备查看效果。", Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this, "替换失败！请确认设备已Root并已授予权限。", Toast.LENGTH_LONG).show()
+            if (!isLooping) {
+                videoView.setOnCompletionListener {
+                    Log.d(TAG, "动作视频播放完毕，恢复播放默认视频。")
+                    currentAnimal?.let {
+                        playVideo(it.defaultVideoResId, isLooping = true)
+                    }
                 }
+            } else {
+                videoView.setOnCompletionListener(null)
             }
-        }.start()
+        } catch (e: Exception) {
+            Log.e(TAG, "播放视频时出错", e)
+        }
     }
 
-    // --- 以下是您原有的代码，保持不变 ---
+    private fun startDefaultBehavior() {
+        startRecognition()
+
+        val prefs = getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+        val lastAnimalName = prefs.getString(lastAnimalKey, null)
+        val animalToStart = animals.find { it.name == lastAnimalName }
+        currentAnimal = animalToStart ?: animals.firstOrNull()
+
+        currentAnimal?.let {
+            Log.d(TAG, "应用启动，当前动物: ${it.name}")
+            playVideo(it.defaultVideoResId, isLooping = true)
+        }
+    }
 
     override fun onResume() {
         super.onResume()
@@ -132,8 +279,9 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
             startRecognition()
         }
         if (!videoView.isPlaying) {
-            val currentVideoTag = videoView.tag as? Int ?: R.raw.v0
-            playVideo(currentVideoTag)
+            currentAnimal?.let {
+                playVideo(it.defaultVideoResId, isLooping = true)
+            }
         }
     }
 
@@ -187,11 +335,6 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
             })
     }
 
-    private fun startDefaultBehavior() {
-        startRecognition()
-        playVideo(R.raw.v0)
-    }
-
     private fun startRecognition() {
         if (isListening) return
         if (model == null) {
@@ -199,7 +342,9 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
             return
         }
         try {
-            val recognizer = Recognizer(model, 16000.0f)
+            val grammar = animals.flatMap { it.keywords + it.actions.flatMap { action -> action.keywords } }.toSet()
+            val grammarJson = "[\"${grammar.joinToString("\", \"")}\"]"
+            val recognizer = Recognizer(model, 16000.0f, grammarJson)
             speechService = SpeechService(recognizer, 16000.0f)
             speechService?.startListening(this)
             isListening = true
@@ -214,65 +359,6 @@ class MainActivity : AppCompatActivity(), RecognitionListener {
         speechService?.stop()
         isListening = false
         Log.d(TAG, "<<< 已停止聆听")
-    }
-
-    override fun onPartialResult(hypothesis: String) {
-        if (!isListening) return
-
-        try {
-            val json = JSONObject(hypothesis)
-            val partialText = json.getString("partial").replace(" ", "")
-            if (partialText.isBlank()) return
-
-            Log.d(TAG, "听到: $partialText")
-
-            for ((resId, keywords) in commandMap) {
-                for (keyword in keywords.first) {
-                    if (partialText.contains(keyword)) {
-                        handleCommand(keyword, resId)
-                        return
-                    }
-                }
-            }
-            for ((resId, keywords) in commandMap) {
-                for (keyword in keywords.second) {
-                    if (partialText.contains(keyword)) {
-                        handleCommand(keyword, resId)
-                        return
-                    }
-                }
-            }
-        } catch (e: Exception) { /* 忽略JSON解析错误 */ }
-    }
-
-    private fun handleCommand(command: String, videoResId: Int) {
-        Log.i(TAG, "检测到指令: '$command', 准备播放视频...")
-        playVideo(videoResId)
-    }
-
-    private fun playVideo(videoResId: Int) {
-        try {
-            val currentVideoTag = videoView.tag as? Int
-            if (videoView.isPlaying && currentVideoTag == videoResId) {
-                return
-            }
-
-            Log.d(TAG, "切换视频播放...")
-            videoView.stopPlayback()
-            videoView.tag = videoResId
-
-            val uri = Uri.parse("android.resource://$packageName/$videoResId")
-            videoView.setVideoURI(uri)
-
-            videoView.setOnPreparedListener { mp ->
-                mp.isLooping = true
-                videoView.start()
-                Log.d(TAG, "视频开始播放 (循环)...")
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "播放视频时出错", e)
-        }
     }
 
     override fun onResult(hypothesis: String) { /* 不使用 */ }

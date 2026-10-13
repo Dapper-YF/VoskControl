@@ -1,74 +1,78 @@
-# Android Voice Kiosk Demo
+# VoskControl
 
-### A public demo of a freelance project for a smart interactive product, featuring Kiosk Mode, offline voice control, and system-level customization.
+基于 **Kotlin + Vosk** 的 Android 离线语音交互应用。将中文语音映射到角色与动作，在本地播放相应视频，面向专用交互展示终端。
 
----
+这是大学期间参与真实企业委托需求后独立完成的 Android 项目。当前公开版本同步自本地 `VoskControl` 源码，保留客户沟通后形成的多角色交互逻辑。仓库中的视频与启动动画由作者替换为演示素材，不包含甲方原始素材。
 
-This project was developed as a freelance commission, turning a standard Android device into a dedicated, voice-controlled interactive terminal. The initial requirement was a simple voice control program, which later evolved, based on client requests, to include full Kiosk Mode and a custom boot animation.
+## 当前功能
 
-This public demo showcases the core technical solutions, with all commercial-sensitive assets replaced.
+- **离线中文识别**：Vosk Android、本地中文模型、16 kHz 录音；识别过程不需要云端 ASR。
+- **角色与动作两级映射**：代码配置 7 个角色，根据角色名称切换上下文，再匹配该角色支持的动作指令；识别结果会去除空格，并配置部分常见误识别别名。
+- **视频播放状态管理**：角色默认视频循环播放；动作视频单次播放结束后恢复默认视频。
+- **角色记忆**：通过 SharedPreferences 恢复上一次选择的角色。
+- **应用启动流程**：启动 Logo 视频 → 启动动画视频 → 语音交互主界面。
+- **终端界面**：沉浸式全屏、HOME 类别桌面入口、录音权限申请及 Activity 生命周期内的监听启停。
 
-## 🎥 Live Demo
+语音处理链路：麦克风 → Vosk partial result → 中文关键词匹配 → 角色/动作选择 → VideoView。
 
-*(Insert your GIF or short video here. This is the most compelling part of your `README`!)*
+## 公开演示资源
 
-`![App Demo](link_to_your_demo.gif)`
+`app/src/main/res/raw/` 包含作者提供的演示视频。源码中的角色与动作命名保留原有指令映射，演示画面不代表客户最终交付素材。替换自己的视频时，保持相同资源名即可；添加角色或指令时，修改 `MainActivity.initializeAnimals()` 中的配置。
 
-## ✨ Core Features
+## 构建与运行
 
-*   **Offline Voice Control**: Integrated the **Vosk API** for real-time, on-device speech recognition to meet client's privacy and offline-first requirements.
-*   **Kiosk Mode**: The application serves as the device's **dedicated home screen (Launcher)**. It automatically starts on boot and locks the device into the app, preventing user access to the underlying Android system.
-*   **Dynamic Content Switching**: Listens for specific voice commands and plays corresponding videos, delivering a responsive, voice-driven user experience.
-*   **System-Level Customization (Root)**: Implemented a feature to **replace the native Android boot animation** with the client's branding. This was achieved by programmatically executing root commands, inspired by [this technical blog post](https://blog.csdn.net/godiors_163/article/details/72529210).
-*   **Full-Screen Immersive UI**: Hides system bars and navigation for a seamless, branded, full-screen experience.
+| 项目 | 当前配置 |
+| --- | --- |
+| Android | 最低 Android 7.0 / API 24；compile/target SDK 34 |
+| Kotlin | 2.2.0 |
+| Android Gradle Plugin | 8.13.0 |
+| Gradle Wrapper | 8.13 |
+| Java | 建议使用 JDK 17 |
+| 语音识别 | Vosk Android 0.3.45（本地 AAR）、JNA 5.14.0 |
+| 应用 ID | `com.example.voskcontrol` |
 
-## 🛠️ Tech Stack
+```powershell
+git clone https://github.com/Dapper-YF/VoskControl.git
+cd VoskControl
+# 设置 JAVA_HOME 为本机 JDK 17，ANDROID_HOME 为 Android SDK 目录。
+.\gradlew.bat :app:assembleDebug
+```
 
-*   **Language**: Kotlin
-*   **Platform**: Android
-*   **Core API**: Vosk Android (Offline Speech Recognition)
-*   **Build Tool**: Gradle
+也可以用 Android Studio 打开项目，安装 Android SDK 34 后同步 Gradle。首次构建需要联网下载未缓存的依赖。
 
-## 🚀 How To Run
+调试 APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。安装到测试设备：
 
-1.  Clone the repository: `git clone https://github.com/Dapper-YF/Android-Voice-Kiosk-Demo.git`
-2.  Open the project in Android Studio.
-3.  Place a custom `bootanimation.zip` in the `app/src/main/res/raw` directory to test the replacement feature.
-4.  **Note**: The boot animation replacement feature requires the target device to have **Root access**.
-5.  Build and run the app.
-6.  To set the app as the default launcher, go to `Settings > Apps > Default apps > Home app` and select "Voice Kiosk Demo".
-7.  To trigger the boot animation replacement, tap the video view and confirm the dialog, then reboot the device.
-8.  ---
+```powershell
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.example.voskcontrol/.SplashLogoActivity
+```
 
-## / 中文说明
+清单注册了 HOME 入口，未注册常规 LAUNCHER 入口，因此不一定出现在普通应用抽屉。需要桌面终端模式时，在系统设置中将 VoskControl 选为默认主屏幕应用；退出时通过系统设置切回原有桌面。
 
-这个项目是我在大学期间承接的一个真实**智能交互产品的外包项目**。它完整地记录了我如何将一个客户的商业需求，通过技术调研和编码实践，最终落地为一个成熟产品的过程。
+授予录音权限并完成模型加载后，可以尝试“博美”“跳舞”“柴犬”“摇尾巴”等指令。公开版可结合 Logcat 的 `VoskControl` 标签观察匹配结果。
 
-### 项目背景与演进
+## 代码结构
 
-项目初始，甲方的需求只是做一个简单的离线语音控制程序。
+```text
+app/src/main/
+├── java/com/example/voskcontrol/
+│   ├── MainActivity.kt             # 角色/动作配置、Vosk、视频与生命周期
+│   ├── SplashLogoActivity.kt       # 启动 Logo 视频
+│   └── SplashAnimationActivity.kt  # 启动动画视频
+├── assets/model-zh-cn/             # 离线中文模型
+└── res/
+    ├── layout/                    # 三个 Activity 的界面
+    ├── raw/                       # 作者提供的演示视频
+    └── values/                    # 应用名称、主题、颜色
+```
 
-随着项目的推进，为了打造一个完整的、沉浸式的产品体验，甲方陆续提出了更深入的定制化需求：
-1.  **实现Kiosk模式**：要求设备开机后直接进入我们的APP，并且用户不能退出到原生的安卓桌面。
-2.  **替换开机动画**：要求将系统原生的“Android”开机动画，替换成客户自己的产品LOGO动画，实现完全的品牌化。
+## 当前边界与后续改进
 
-这个从“应用开发”到“系统级定制”的演进过程，对我来说是巨大的挑战，也是宝贵的成长经历。
+- HOME 入口与沉浸模式不等同于设备管理员 / Lock Task 的强制单应用锁定。
+- 当前版本播放应用内启动视频；旧版的 Root 系统开机动画替换代码不属于当前实现。
+- 语音采用固定关键词与匹配顺序，尚未实现通用意图理解或大模型 Agent。部分长短词存在包含关系，后续可补充更精确的优先级与防重复触发策略。
+- 识别效果取决于麦克风、环境噪声、口音及指令词表。当前没有可复现的准确率或时延基准。
+- 监听错误恢复、启动视频异常处理和不同 Android 厂商的桌面行为仍需设备测试。
+- 仓库自带测试为 Android 模板测试，不代表语音业务逻辑已有完整自动化覆盖。
 
-### 核心功能与技术实现细节
-
-*   **离线语音识别 (Vosk)**：根据甲方对隐私和无网络环境使用的要求，我调研并最终采用了Vosk离线识别框架。在集成过程中，我解决了模型加载、多线程识别以及权限处理等一系列问题。
-
-*   **“Kiosk”桌面模式**：为了实现“霸占”屏幕的功能，我深入研究了 `AndroidManifest.xml` 中 `intent-filter` 的配置，通过将 `MainActivity` 声明为 `CATEGORY_HOME` 类型，成功地将其注册为系统桌面。这个过程也让我对Android的Activity启动模式有了更深的理解。
-
-*   **系统开机动画替换 (Root)**：这是项目中最具挑战性的部分。要在APP内实现对系统文件的修改，必须获取Root权限。我通过阅读和实践CSDN上的这篇博客：[https://blog.csdn.net/godiors_163/article/details/72529210](https://blog.csdn.net/godiors_163/article/details/72529210)，学习并掌握了如何通过 `su` 命令获取Root权限，动态挂载 `/system` 分区为可读写状态，并最终用代码成功替换了 `bootanimation.zip` 文件，实现了客户的品牌化需求。
-
-### 项目收获
-
-通过这个真实的外包项目，我最大的收获是：
-1.  **商业需求转化能力**：学会了如何倾听客户需求，并将其转化为具体、可行的技术解决方案。
-2.  **深度问题解决能力**：面对从未知API的集成到系统底层的修改，我锻炼了独立调研、动手实践并最终解决问题的能力。
-3.  **对代码价值的认知**：我亲身体会到，技术不仅仅是代码，更是为客户创造价值、解决实际问题的工具。
-
-我将这个项目的核心技术剥离出来，制作成这个公开的Demo，一方面是为了记录我的成长，另一方面也希望能与更多人交流技术。
-
-**感谢您的阅读！**
+第三方模型、Vosk/JNA 及演示素材遵循各自的许可；本 README 不额外授予客户素材的使用权。
